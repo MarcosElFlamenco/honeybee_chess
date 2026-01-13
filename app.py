@@ -593,14 +593,7 @@ with gr.Blocks(
             
             1. **Train your model** using the [Chess Challenge Template](https://github.com/nathanael-fijalkow/ChessChallengeTemplate)
             
-            2. **Push to Hugging Face Hub**:
-            ```python
-            from chess_challenge import ChessForCausalLM, ChessTokenizer
-            
-            # After training
-            model.push_to_hub("your-model-name", organization="{ORGANIZATION}")
-            tokenizer.push_to_hub("your-model-name", organization="{ORGANIZATION}")
-            ```
+            2. **Push to Hugging Face Hub** using the `submit.py` script provided in the template
             
             3. **Verify your submission** by checking the model page on Hugging Face
             
