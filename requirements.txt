@@ -7,3 +7,4 @@ datasets>=2.14.0
 pandas>=2.0.0
 fastapi
 uvicorn
+accelerate>=0.27.0
