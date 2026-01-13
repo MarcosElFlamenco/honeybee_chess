@@ -513,6 +513,9 @@ with gr.Blocks(
         with gr.TabItem("How to Submit"):
             gr.Markdown(f"""
             ### Submitting Your Model
+                        
+            The goal is to create a chess-playing language model with **under 1 million parameters**, which is roughly the number of neurons in a honey bee's brain.
+            At this scale, efficiency and clever architecture choices are key! We are not targetting superhuman performance, but rather exploring how well small models can learn the rules of chess, the goal being (only) to play **legal moves**.
             
             1. **Train your model** using the [Chess Challenge Template](https://github.com/nathanael-fijalkow/ChessChallengeTemplate)
             
@@ -527,10 +530,7 @@ with gr.Blocks(
             
             3. **Verify your submission** by checking the model page on Hugging Face
             
-            4. **Run evaluations**:
-               - First: **Legal Move Eval** (quick sanity check)
-               - Then: **Win Rate Eval** (full ELO computation)
-            
+            4. **Run evaluations**:            
             ### Requirements
             
             - Model must be under **1M parameters**
