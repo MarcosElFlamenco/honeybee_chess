@@ -48,10 +48,10 @@ LEADERBOARD_COLUMNS = [
     "model_id",
     "legal_rate",
     "legal_rate_first_try",
-    "elo",
+    # "elo",
     # "win_rate",
-    "draw_rate",
-    "games_played",
+    # "draw_rate",
+    # "games_played",
     "last_updated",
 ]
 
@@ -132,8 +132,8 @@ def format_leaderboard_html(data: list) -> str:
     if not data:
         return "<p>No models evaluated yet. Be the first to submit!</p>"
     
-    # Sort by ELO
-    sorted_data = sorted(data, key=lambda x: x.get("elo", 0), reverse=True)
+    # Sort by legal_rate
+    sorted_data = sorted(data, key=lambda x: x.get("legal_rate", 0), reverse=True)
     
     html = """
     <style>
@@ -173,9 +173,10 @@ def format_leaderboard_html(data: list) -> str:
                 <th>Rank</th>
                 <th>Model</th>
                 <th>Legal Rate</th>
-                <th>ELO</th>
+                <th>Legal Rate (1st try)</th>
+                <!-- <th>ELO</th> -->
                 <!-- <th>Win Rate</th> -->
-                <th>Games</th>
+                <!-- <th>Games</th> -->
                 <th>Last Updated</th>
             </tr>
         </thead>
@@ -197,14 +198,16 @@ def format_leaderboard_html(data: list) -> str:
         else:
             legal_class = "legal-bad"
         
+        legal_rate_first_try = entry.get('legal_rate_first_try', 0)
         html += f"""
             <tr>
                 <td class="{rank_class}">{rank_display}</td>
                 <td><a href="{model_url}" target="_blank" class="model-link">{entry['model_id'].split('/')[-1]}</a></td>
                 <td class="{legal_class}">{legal_rate*100:.1f}%</td>
-                <td><strong>{entry.get('elo', 'N/A'):.0f}</strong></td>
+                <td>{legal_rate_first_try*100:.1f}%</td>
+                <!-- <td><strong>{entry.get('elo', 'N/A'):.0f}</strong></td> -->
                 <!-- <td>{entry.get('win_rate', 0)*100:.1f}%</td> -->
-                <td>{entry.get('games_played', 0)}</td>
+                <!-- <td>{entry.get('games_played', 0)}</td> -->
                 <td>{entry.get('last_updated', 'N/A')}</td>
             </tr>
         """
@@ -358,135 +361,135 @@ def evaluate_legal_moves(
         return f"Evaluation failed: {str(e)}"
 
 
-def evaluate_winrate(
-    model_id: str,
-    stockfish_level: str,
-    n_games: int,
-    progress: gr.Progress = gr.Progress(),
-) -> str:
-    """Evaluate a model's win rate against Stockfish."""
-    try:
-        import sys
-        sys.path.insert(0, str(Path(__file__).parent))
-        
-        from src.evaluate import ChessEvaluator, load_model_from_hub
-        
-        progress(0, desc="Loading model...")
-        model, tokenizer = load_model_from_hub(model_id)
-        
-        progress(0.1, desc="Setting up Stockfish...")
-        level = STOCKFISH_LEVELS.get(stockfish_level, 1)
-        evaluator = ChessEvaluator(
-            model=model,
-            tokenizer=tokenizer,
-            stockfish_level=level,
-        )
-        
-        progress(0.2, desc=f"Playing {n_games} games...")
-        results = evaluator.evaluate(n_games=n_games, verbose=False)
-        
-        # Update leaderboard
-        leaderboard = load_leaderboard()
-        entry = next((e for e in leaderboard if e["model_id"] == model_id), None)
-        if entry is None:
-            entry = {"model_id": model_id}
-            leaderboard.append(entry)
-        
-        entry.update({
-            "elo": results.get("estimated_elo", 1000),
-            "win_rate": results.get("win_rate", 0),
-            "games_played": entry.get("games_played", 0) + n_games,
-            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        })
-        
-        save_leaderboard(leaderboard)
-        progress(1.0, desc="Done!")
-        
-        return f"""
-## Win Rate Evaluation for {model_id.split('/')[-1]}
+# def evaluate_winrate(
+#     model_id: str,
+#     stockfish_level: str,
+#     n_games: int,
+#     progress: gr.Progress = gr.Progress(),
+# ) -> str:
+#     """Evaluate a model's win rate against Stockfish."""
+#     try:
+#         import sys
+#         sys.path.insert(0, str(Path(__file__).parent))
+#         
+#         from src.evaluate import ChessEvaluator, load_model_from_hub
+#         
+#         progress(0, desc="Loading model...")
+#         model, tokenizer = load_model_from_hub(model_id)
+#         
+#         progress(0.1, desc="Setting up Stockfish...")
+#         level = STOCKFISH_LEVELS.get(stockfish_level, 1)
+#         evaluator = ChessEvaluator(
+#             model=model,
+#             tokenizer=tokenizer,
+#             stockfish_level=level,
+#         )
+#         
+#         progress(0.2, desc=f"Playing {n_games} games...")
+#         results = evaluator.evaluate(n_games=n_games, verbose=False)
+#         
+#         # Update leaderboard
+#         leaderboard = load_leaderboard()
+#         entry = next((e for e in leaderboard if e["model_id"] == model_id), None)
+#         if entry is None:
+#             entry = {"model_id": model_id}
+#             leaderboard.append(entry)
+#         
+#         entry.update({
+#             "elo": results.get("estimated_elo", 1000),
+#             "win_rate": results.get("win_rate", 0),
+#             "games_played": entry.get("games_played", 0) + n_games,
+#             "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+#         })
+#         
+#         save_leaderboard(leaderboard)
+#         progress(1.0, desc="Done!")
+#         
+#         return f"""
+# ## Win Rate Evaluation for {model_id.split('/')[-1]}
+# 
+# | Metric | Value |
+# |--------|-------|
+# | **Estimated ELO** | {results.get('estimated_elo', 'N/A'):.0f} |
+# | **Win Rate** | {results.get('win_rate', 0)*100:.1f}% |
+# | **Draw Rate** | {results.get('draw_rate', 0)*100:.1f}% |
+# | **Loss Rate** | {results.get('loss_rate', 0)*100:.1f}% |
+# | **Avg Game Length** | {results.get('avg_game_length', 0):.1f} moves |
+# | **Illegal Move Rate** | {results.get('illegal_move_rate', 0)*100:.2f}% |
+# 
+# Games played: {n_games} against Stockfish {stockfish_level}
+# """
+#         
+#     except Exception as e:
+#         return f"Evaluation failed: {str(e)}"
 
-| Metric | Value |
-|--------|-------|
-| **Estimated ELO** | {results.get('estimated_elo', 'N/A'):.0f} |
-| **Win Rate** | {results.get('win_rate', 0)*100:.1f}% |
-| **Draw Rate** | {results.get('draw_rate', 0)*100:.1f}% |
-| **Loss Rate** | {results.get('loss_rate', 0)*100:.1f}% |
-| **Avg Game Length** | {results.get('avg_game_length', 0):.1f} moves |
-| **Illegal Move Rate** | {results.get('illegal_move_rate', 0)*100:.2f}% |
 
-Games played: {n_games} against Stockfish {stockfish_level}
-"""
-        
-    except Exception as e:
-        return f"Evaluation failed: {str(e)}"
-
-
-def evaluate_model(
-    model_id: str,
-    stockfish_level: str,
-    n_games: int,
-    progress: gr.Progress = gr.Progress(),
-) -> str:
-    """Evaluate a model against Stockfish."""
-    try:
-        # Import evaluation code
-        import sys
-        sys.path.insert(0, str(Path(__file__).parent))
-        
-        from src.evaluate import ChessEvaluator, load_model_from_hub
-        
-        progress(0, desc="Loading model...")
-        model, tokenizer = load_model_from_hub(model_id)
-        
-        progress(0.1, desc="Setting up Stockfish...")
-        level = STOCKFISH_LEVELS.get(stockfish_level, 1)
-        evaluator = ChessEvaluator(
-            model=model,
-            tokenizer=tokenizer,
-            stockfish_level=level,
-        )
-        
-        progress(0.2, desc=f"Playing {n_games} games...")
-        results = evaluator.evaluate(n_games=n_games, verbose=False)
-        
-        # Update leaderboard
-        leaderboard = load_leaderboard()
-        
-        # Find or create entry
-        entry = next((e for e in leaderboard if e["model_id"] == model_id), None)
-        if entry is None:
-            entry = {"model_id": model_id}
-            leaderboard.append(entry)
-        
-        entry.update({
-            "elo": results.get("estimated_elo", 1000),
-            "win_rate": results.get("win_rate", 0),
-            "games_played": entry.get("games_played", 0) + n_games,
-            "illegal_rate": results.get("illegal_move_rate", 0),
-            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        })
-        
-        save_leaderboard(leaderboard)
-        
-        progress(1.0, desc="Done!")
-        
-        return f"""
-## Evaluation Results for {model_id.split('/')[-1]}
-
-| Metric | Value |
-|--------|-------|
-| **Estimated ELO** | {results.get('estimated_elo', 'N/A'):.0f} |
-| **Win Rate** | {results.get('win_rate', 0)*100:.1f}% |
-| **Draw Rate** | {results.get('draw_rate', 0)*100:.1f}% |
-| **Loss Rate** | {results.get('loss_rate', 0)*100:.1f}% |
-| **Avg Game Length** | {results.get('avg_game_length', 0):.1f} moves |
-| **Illegal Move Rate** | {results.get('illegal_move_rate', 0)*100:.2f}% |
-
-Games played: {n_games} against Stockfish {stockfish_level}
-"""
-        
-    except Exception as e:
-        return f"Evaluation failed: {str(e)}"
+# def evaluate_model(
+#     model_id: str,
+#     stockfish_level: str,
+#     n_games: int,
+#     progress: gr.Progress = gr.Progress(),
+# ) -> str:
+#     """Evaluate a model against Stockfish."""
+#     try:
+#         # Import evaluation code
+#         import sys
+#         sys.path.insert(0, str(Path(__file__).parent))
+#         
+#         from src.evaluate import ChessEvaluator, load_model_from_hub
+#         
+#         progress(0, desc="Loading model...")
+#         model, tokenizer = load_model_from_hub(model_id)
+#         
+#         progress(0.1, desc="Setting up Stockfish...")
+#         level = STOCKFISH_LEVELS.get(stockfish_level, 1)
+#         evaluator = ChessEvaluator(
+#             model=model,
+#             tokenizer=tokenizer,
+#             stockfish_level=level,
+#         )
+#         
+#         progress(0.2, desc=f"Playing {n_games} games...")
+#         results = evaluator.evaluate(n_games=n_games, verbose=False)
+#         
+#         # Update leaderboard
+#         leaderboard = load_leaderboard()
+#         
+#         # Find or create entry
+#         entry = next((e for e in leaderboard if e["model_id"] == model_id), None)
+#         if entry is None:
+#             entry = {"model_id": model_id}
+#             leaderboard.append(entry)
+#         
+#         entry.update({
+#             "elo": results.get("estimated_elo", 1000),
+#             "win_rate": results.get("win_rate", 0),
+#             "games_played": entry.get("games_played", 0) + n_games,
+#             "illegal_rate": results.get("illegal_move_rate", 0),
+#             "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+#         })
+#         
+#         save_leaderboard(leaderboard)
+#         
+#         progress(1.0, desc="Done!")
+#         
+#         return f"""
+# ## Evaluation Results for {model_id.split('/')[-1]}
+# 
+# | Metric | Value |
+# |--------|-------|
+# | **Estimated ELO** | {results.get('estimated_elo', 'N/A'):.0f} |
+# | **Win Rate** | {results.get('win_rate', 0)*100:.1f}% |
+# | **Draw Rate** | {results.get('draw_rate', 0)*100:.1f}% |
+# | **Loss Rate** | {results.get('loss_rate', 0)*100:.1f}% |
+# | **Avg Game Length** | {results.get('avg_game_length', 0):.1f} moves |
+# | **Illegal Move Rate** | {results.get('illegal_move_rate', 0)*100:.2f}% |
+# 
+# Games played: {n_games} against Stockfish {stockfish_level}
+# """
+#         
+#     except Exception as e:
+#         return f"Evaluation failed: {str(e)}"
 
 
 def refresh_leaderboard() -> str:
@@ -595,11 +598,9 @@ with gr.Blocks(
             ### Phase 1: Legal Move Evaluation
             
             Test if your model can generate **legal chess moves** in random positions.
-            This is a quick first check before running full games.
             
             - Tests the model on random board positions
             - Measures how often it generates legal moves
-            - **Recommended before win rate evaluation**
             """)
             
             with gr.Row():
