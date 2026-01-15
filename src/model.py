@@ -359,7 +359,7 @@ class ChessForCausalLM(PreTrainedModel):
             shift_labels = labels[..., 1:].contiguous()
             
             # Flatten for cross-entropy
-            loss_fct = nn.CrossEntropyLoss(ignore_index=self.config.pad_token_id)
+            loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
             loss = loss_fct(
                 shift_logits.view(-1, shift_logits.size(-1)),
                 shift_labels.view(-1),
