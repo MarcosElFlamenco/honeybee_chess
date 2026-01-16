@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -p mesonet 
 #SBATCH --account=m25146
-#SBATCH --job-name=train_large
-#SBATCH --output=logs/large.out
-#SBATCH --error=logs/large.out
+#SBATCH --job-name=train_long
+#SBATCH --output=logs/long.out
+#SBATCH --error=logs/long.out
 #SBATCH --time=03:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
@@ -25,7 +25,7 @@ python -m src.train \
     --dropout 0.1 \
     --dataset_name dlouapre/lichess_2025-01_1M \
     --val_samples 5000 \
-    --output_dir ./output \
+    --output_dir ./outputs/long \
     --num_train_epochs 3 \
     --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 64 \

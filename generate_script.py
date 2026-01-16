@@ -97,10 +97,14 @@ def generate_slurm(template_text: str, config_name: str, final_args: dict):
     template_text = re.sub(r"^#SBATCH\s+--job-name=.*$", f"#SBATCH --job-name=train_{config_name}", template_text, flags=re.M)
     template_text = re.sub(r"^#SBATCH\s+--output=.*$", f"#SBATCH --output=logs/{config_name}.out", template_text, flags=re.M)
     template_text = re.sub(r"^#SBATCH\s+--error=.*$", f"#SBATCH --error=logs/{config_name}.out", template_text, flags=re.M)
-
+    template_text = re.sub(r"--output_dir * \\$", f"--output_dir ./outputs/{config_name}", template_text, flags=re.M)
+    
     # Build python arg block
     parts = ["python -m src.train \\"]
     for k, v in final_args.items():
+        if k == "output_dir":
+            parts.append(f"    --{k} ./outputs/{config_name} \\")
+            continue
         if v is None:
             continue
         if isinstance(v, bool):
@@ -113,6 +117,7 @@ def generate_slurm(template_text: str, config_name: str, final_args: dict):
         else:
             val = str(v)
         parts.append(f"    --{k} {val} \\")
+
 
     # remove trailing backslash on last
     if parts:
