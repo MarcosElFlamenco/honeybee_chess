@@ -11,6 +11,6 @@ remotetrain:
 
 valid_moves:
 	python -m src.evaluate \
-		--model_path ./my_model \
+		--model_path ./my_model/final_model \
 		--mode legal \
 		--n_positions 500

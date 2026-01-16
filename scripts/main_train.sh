@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH -p mesonet 
 #SBATCH --account=m25146
-#SBATCH --job-name=train_vgg
-#SBATCH --output=logs/train_vgg%j.out
-#SBATCH --error=logs/train_vgg%j.err
+#SBATCH --job-name=train_vanilla_honeybee
+#SBATCH --output=logs/vanilla_honeybee.out
+#SBATCH --error=logs/vanilla_honeybee.out
 #SBATCH --time=03:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --gres=gpu:1
-#SBATCH --mail-user=marius.henry13@gmail.com
+#SBATCH --mail-user=oscar.garnier@gmail.com
 #SBATCH --mail-type=BEGIN,END,FAIL
 
 # Activate virtual environment
