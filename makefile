@@ -8,13 +8,14 @@ train:
     	--n_embd 64 \
     	--n_layer 20 \
 
+CURRENT_TRAIN = large
+
 valid_moves:
 	python -m src.evaluate \
 		--model_path ./outputs/$(CURRENT_TRAIN)/final_model \
 		--mode legal \
 		--n_positions 500
 
-CURRENT_TRAIN = long
 
 generate_script:
 	python generate_script.py $(CURRENT_TRAIN)
@@ -25,5 +26,5 @@ run_slurm:
 run_training: generate_script run_slurm
 
 
-local_test:
+local_test: generate_script
 	bash scripts/$(CURRENT_TRAIN).sh
