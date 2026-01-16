@@ -10,7 +10,7 @@ train:
 
 valid_moves:
 	python -m src.evaluate \
-		--model_path ./my_model/final_model \
+		--model_path ./outputs/$(CURRENT_TRAIN)/final_model \
 		--mode legal \
 		--n_positions 500
 
