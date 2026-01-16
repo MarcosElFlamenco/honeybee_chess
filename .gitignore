@@ -30,8 +30,6 @@ runs/
 wandb/
 *.pth
 *.pt
-*.safetensors
-*.bin
 
 # Dataset caches
 .cache/
