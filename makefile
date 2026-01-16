@@ -14,7 +14,7 @@ valid_moves:
 		--mode legal \
 		--n_positions 500
 
-CURRENT_TRAIN = vanilla
+CURRENT_TRAIN = long
 
 generate_script:
 	python generate_script.py $(CURRENT_TRAIN)
@@ -24,3 +24,6 @@ run_slurm:
 
 run_training: generate_script run_slurm
 
+
+local_test:
+	bash scripts/$(CURRENT_TRAIN).sh
