@@ -4,7 +4,9 @@ train:
 	python -m src.train \
 		--output_dir ./my_model \
 		--num_train_epochs 3 \
-		--per_device_train_batch_size 32
+		--per_device_train_batch_size 32 \
+    	--n_embd 64 \
+    	--n_layer 20 \
 
 valid_moves:
 	python -m src.evaluate \

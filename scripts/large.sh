@@ -18,7 +18,7 @@ source .venv/bin/activate
 # Run the training script
 python -m src.train \
     --vocab_size 1200 \
-    --n_embd 512 \
+    --n_embd 232 \
     --n_layer 1 \
     --n_head 4 \
     --n_ctx 256 \
