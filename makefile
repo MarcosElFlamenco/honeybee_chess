@@ -8,3 +8,9 @@ train:
 
 remotetrain:
 	sbatch scripts/main_train.sh
+
+valid_moves:
+	python -m src.evaluate \
+		--model_path ./my_model \
+		--mode legal \
+		--n_positions 500
