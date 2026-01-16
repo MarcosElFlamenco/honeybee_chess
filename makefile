@@ -8,6 +8,7 @@ train:
     	--n_embd 64 \
     	--n_layer 20 \
 
+
 CURRENT_TRAIN = large
 
 valid_moves:
