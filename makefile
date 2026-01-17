@@ -9,7 +9,7 @@ train:
     	--n_layer 20 \
 
 
-CURRENT_TRAIN = rmsnorm
+CURRENT_TRAIN = gqa_vanilla 
 
 valid_moves:
 	python -m src.evaluate \
