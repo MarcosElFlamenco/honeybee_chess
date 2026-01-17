@@ -9,7 +9,7 @@ train:
     	--n_layer 20 \
 
 
-CURRENT_TRAIN = gqa_vanilla
+CURRENT_TRAIN = more_groups
 
 valid_moves:
 	python -m src.evaluate \
