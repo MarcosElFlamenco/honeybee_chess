@@ -578,6 +578,7 @@ class ChessEvaluator:
         n_positions: int = 1000,
         temperature: float = 0.7,
         verbose: bool = True,
+        seed: int = 42,
     ) -> dict:
         """
         Evaluate the model's ability to generate legal moves.
@@ -589,10 +590,15 @@ class ChessEvaluator:
             n_positions: Number of positions to test.
             temperature: Sampling temperature.
             verbose: Whether to print progress.
+            seed: Random seed for reproducibility.
         
         Returns:
             Dictionary with legal move statistics.
         """
+        # Set random seed for reproducibility
+        random.seed(seed)
+        torch.manual_seed(seed)
+        
         results = {
             "total_positions": 0,
             "legal_first_try": 0,
@@ -744,13 +750,14 @@ class ChessEvaluator:
         return results
 
 
-def load_model_from_hub(model_id: str, device: str = "auto"):
+def load_model_from_hub(model_id: str, device: str = "auto", verbose: bool = True):
     """
     Load a model from the Hugging Face Hub.
     
     Args:
         model_id: Model ID on Hugging Face Hub.
         device: Device to load the model on.
+        verbose: Whether to print debug info about loaded tokenizer.
     
     Returns:
         Tuple of (model, tokenizer).
@@ -761,17 +768,32 @@ def load_model_from_hub(model_id: str, device: str = "auto"):
     from src.model import ChessConfig, ChessForCausalLM
     from src.tokenizer import ChessTokenizer
     
-    # Try loading with custom tokenizer first, fall back to AutoTokenizer
+    # Try AutoTokenizer with trust_remote_code first to load custom tokenizer.py from Hub
+    # Fall back to local ChessTokenizer if the model doesn't have a custom tokenizer
+    tokenizer_source = None
     try:
-        tokenizer = ChessTokenizer.from_pretrained(model_id)
-    except Exception:
         tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+        tokenizer_source = "AutoTokenizer (from Hub with trust_remote_code=True)"
+    except Exception as e:
+        if verbose:
+            print(f"   AutoTokenizer failed: {e}")
+        tokenizer = ChessTokenizer.from_pretrained(model_id)
+        tokenizer_source = "ChessTokenizer (local class, vocab from Hub)"
     
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         trust_remote_code=True,
         device_map=device,
     )
+    
+    # Print debug info
+    if verbose:
+        print(f"   Tokenizer loaded via: {tokenizer_source}")
+        print(f"   Tokenizer class: {type(tokenizer).__name__}")
+        print(f"   Tokenizer vocab size: {tokenizer.vocab_size}")
+        # Check if tokenizer has custom attributes that might differ
+        if hasattr(tokenizer, '_vocab'):
+            print(f"   Tokenizer has _vocab attribute: yes ({len(tokenizer._vocab)} entries)")
     
     return model, tokenizer
 
@@ -801,6 +823,10 @@ def main():
         help="Number of positions for legal move evaluation"
     )
     parser.add_argument(
+        "--seed", type=int, default=42,
+        help="Random seed for reproducibility"
+    )
+    parser.add_argument(
         "--n_games", type=int, default=100,
         help="Number of games to play for win rate evaluation"
     )
@@ -828,7 +854,10 @@ def main():
         from src.model import ChessConfig, ChessForCausalLM
         
         tokenizer = ChessTokenizer.from_pretrained(args.model_path)
-        model = AutoModelForCausalLM.from_pretrained(args.model_path)
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_path,
+            device_map="auto",
+        )
     else:
         # Assume Hugging Face model ID (or invalid path)
         if args.model_path.startswith(".") or args.model_path.startswith("/"):
@@ -858,6 +887,7 @@ def main():
             n_positions=args.n_positions,
             temperature=args.temperature,
             verbose=True,
+            seed=args.seed,
         )
         
         print("\n" + "-" * 40)

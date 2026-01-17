@@ -360,6 +360,10 @@ class ChessForCausalLM(PreTrainedModel):
             
             # Flatten for cross-entropy
             loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
+<<<<<<< HEAD
+=======
+            # loss_fct = nn.CrossEntropyLoss(ignore_index=self.config.pad_token_id)
+>>>>>>> 56aef5810addb5391f12b56d1dc2c308f663da39
             loss = loss_fct(
                 shift_logits.view(-1, shift_logits.size(-1)),
                 shift_labels.view(-1),
