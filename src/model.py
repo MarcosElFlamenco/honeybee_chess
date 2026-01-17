@@ -15,6 +15,7 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
+from networkx import config
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -62,6 +63,7 @@ class ChessConfig(PretrainedConfig):
         dropout: float = 0.1,
         layer_norm_epsilon: float = 1e-5,
         tie_weights: bool = True,
+        rmsNorm: bool = False,
         pad_token_id: int = 0,
         bos_token_id: int = 1,
         eos_token_id: int = 2,
@@ -84,6 +86,7 @@ class ChessConfig(PretrainedConfig):
         self.dropout = dropout
         self.layer_norm_epsilon = layer_norm_epsilon
         self.tie_weights = tie_weights
+        self.rmsNorm = rmsNorm
         # Inform HF base class about tying behavior
         self.tie_word_embeddings = bool(tie_weights)
 
@@ -264,13 +267,22 @@ class TransformerBlock(nn.Module):
     
     def __init__(self, config: ChessConfig,group_size: int = None):
         super().__init__()
-        
-        self.ln_1 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
+#nn.modules.normalization.RMSNorm
+        if config.rmsNorm == True:
+            print(f"using RMSNorm")
+            self.ln_1 = nn.RMSNorm(config.n_embd, eps=config.layer_norm_epsilon)
+        else:
+            print(f"using LayerNorm")
+            self.ln_1 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
+
         if config.group_size is not None:
             self.attn = GroupedQueryAttention(config)
         else:
             self.attn = MultiHeadAttention(config)
-        self.ln_2 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
+        if config.rmsNorm == True:
+            self.ln_2 = nn.RMSNorm(config.n_embd, eps=config.layer_norm_epsilon)
+        else:
+            self.ln_2 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
         self.mlp = FeedForward(config)
     
     def forward(

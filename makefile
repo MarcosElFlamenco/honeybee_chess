@@ -9,7 +9,7 @@ train:
     	--n_layer 20 \
 
 
-CURRENT_TRAIN = more_groups
+CURRENT_TRAIN = rmsnorm
 
 valid_moves:
 	python -m src.evaluate \
