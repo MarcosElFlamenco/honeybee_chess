@@ -18,7 +18,7 @@ source .venv/bin/activate
 # Run the training script
 python -m src.train \
     --n_embd 128 \
-    --n_layer 4 \
+    --n_layer 5 \
     --n_head 4 \
     --n_ctx 256 \
     --dropout 0.1 \

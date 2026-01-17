@@ -3,7 +3,7 @@
 
 vocab_size = 1200
 n_embd = 128
-n_layer = 4
+n_layer = 5
 n_head = 4
 n_ctx = 256
 n_inner = None
