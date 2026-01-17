@@ -58,6 +58,7 @@ class ChessConfig(PretrainedConfig):
         n_head: int = 4,
         n_ctx: int = 256,
         n_inner: Optional[int] = None,
+        group_size: Optional[int] = None,
         dropout: float = 0.1,
         layer_norm_epsilon: float = 1e-5,
         tie_weights: bool = True,
@@ -78,12 +79,77 @@ class ChessConfig(PretrainedConfig):
         self.n_layer = n_layer
         self.n_head = n_head
         self.n_ctx = n_ctx
+        self.group_size = group_size
         self.n_inner = n_inner if n_inner is not None else 3 * n_embd  # Reduced from 4x to 3x
         self.dropout = dropout
         self.layer_norm_epsilon = layer_norm_epsilon
         self.tie_weights = tie_weights
         # Inform HF base class about tying behavior
         self.tie_word_embeddings = bool(tie_weights)
+
+
+class GroupedQueryAttention(nn.Module):
+
+    def __init__(self, config: ChessConfig):
+        super().__init__()
+
+        assert config.n_head % config.group_size == 0, "n_head must be divisible by group_size"
+        print(f"Using Grouped Query Attention with group_size={config.group_size}")        
+        self.n_head = config.n_head          # Total Query heads
+        self.group_size = config.group_size
+        self.n_kv_head = self.n_head // config.group_size  # Number of KV heads
+        
+        self.n_embd = config.n_embd
+        self.head_dim = config.n_embd // config.n_head
+        
+        # Q projection stays the same, but K and V projections are smaller
+        # Total output: n_embd (for Q) + 2 * (n_kv_head * head_dim) (for K and V)
+        self.q_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.kv_proj = nn.Linear(config.n_embd, 2 * self.n_kv_head * self.head_dim)
+        
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.dropout = nn.Dropout(config.dropout)
+        
+        self.register_buffer("bias", torch.tril(torch.ones(config.n_ctx, config.n_ctx))
+                             .view(1, 1, config.n_ctx, config.n_ctx), persistent=False)
+
+
+    def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        batch_size, seq_len, _ = x.size()
+        
+        # 1. Project Q, K, V
+        q = self.q_proj(x)  # (B, T, n_head * head_dim)
+        kv = self.kv_proj(x) # (B, T, 2 * n_kv_head * head_dim)
+        k, v = kv.split(self.n_kv_head * self.head_dim, dim=2)
+        
+        # 2. Reshape Q normally
+        q = q.view(batch_size, seq_len, self.n_head, self.head_dim).transpose(1, 2)
+        
+        # 3. Reshape K, V and REPEAT them to match Q
+        k = k.view(batch_size, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, seq_len, self.n_kv_head, self.head_dim).transpose(1, 2)
+        
+        # Repeat KV heads 'group_size' times to match n_head
+        # We use .repeat_interleave to ensure head 0 of KV is used by the first 'group_size' Q heads
+        k = k.repeat_interleave(self.group_size, dim=1) # (B, n_head, T, head_dim)
+        v = v.repeat_interleave(self.group_size, dim=1) # (B, n_head, T, head_dim)
+        
+        # 4. Standard Scaled Dot-Product Attention
+        attn_weights = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        
+        causal_mask = self.bias[:, :, :seq_len, :seq_len]
+        attn_weights = attn_weights.masked_fill(causal_mask == 0, float("-inf"))
+        
+        if attention_mask is not None:
+            attn_weights = attn_weights.masked_fill(attention_mask.unsqueeze(1).unsqueeze(2) == 0, float("-inf"))
+        
+        attn_weights = F.softmax(attn_weights, dim=-1)
+        attn_output = torch.matmul(self.dropout(attn_weights), v)
+        
+        # 5. Recombine
+        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.n_embd)
+        return self.c_proj(attn_output)
+    
 
 
 class MultiHeadAttention(nn.Module):
@@ -100,6 +166,7 @@ class MultiHeadAttention(nn.Module):
         assert config.n_embd % config.n_head == 0, \
             f"n_embd ({config.n_embd}) must be divisible by n_head ({config.n_head})"
         
+        print(f"Using Regular Attention with group_size={config.group_size}")        
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.head_dim = config.n_embd // config.n_head
@@ -195,11 +262,14 @@ class TransformerBlock(nn.Module):
     training stability.
     """
     
-    def __init__(self, config: ChessConfig):
+    def __init__(self, config: ChessConfig,group_size: int = None):
         super().__init__()
         
         self.ln_1 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
-        self.attn = MultiHeadAttention(config)
+        if config.group_size is not None:
+            self.attn = GroupedQueryAttention(config)
+        else:
+            self.attn = MultiHeadAttention(config)
         self.ln_2 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
         self.mlp = FeedForward(config)
     
@@ -256,6 +326,8 @@ class ChessForCausalLM(PreTrainedModel):
         self.h = nn.ModuleList([
             TransformerBlock(config) for _ in range(config.n_layer)
         ])
+
+
         
         # Final layer norm
         self.ln_f = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
@@ -360,10 +432,7 @@ class ChessForCausalLM(PreTrainedModel):
             
             # Flatten for cross-entropy
             loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
-<<<<<<< HEAD
-=======
             # loss_fct = nn.CrossEntropyLoss(ignore_index=self.config.pad_token_id)
->>>>>>> 56aef5810addb5391f12b56d1dc2c308f663da39
             loss = loss_fct(
                 shift_logits.view(-1, shift_logits.size(-1)),
                 shift_labels.view(-1),

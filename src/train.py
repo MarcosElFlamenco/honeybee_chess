@@ -88,6 +88,11 @@ def parse_args():
         help="Number of training epochs"
     )
     parser.add_argument(
+        "--group_size", type=int, default=None,
+        help="Group size for grouped query attention"
+    )
+
+    parser.add_argument(
         "--per_device_train_batch_size", type=int, default=32,
         help="Training batch size per device"
     )
@@ -162,6 +167,7 @@ def main():
         n_ctx=args.n_ctx,
         n_inner=args.n_inner,
         dropout=args.dropout,
+        group_size=args.group_size,
         tie_weights=not args.no_tie_weights,
         pad_token_id=tokenizer.pad_token_id,
         bos_token_id=tokenizer.bos_token_id,
