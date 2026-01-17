@@ -16,7 +16,7 @@ max_train_samples = None
 val_samples = 5000
 
 output_dir = "./output"
-num_train_epochs = 3
+num_train_epochs = 10
 per_device_train_batch_size = 32
 per_device_eval_batch_size = 64
 learning_rate = 5e-4
