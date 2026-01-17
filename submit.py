@@ -78,9 +78,21 @@ def main():
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
 
+        # Register tokenizer for AutoTokenizer so it can be loaded with trust_remote_code=True
+        # This adds the 'auto_map' field to tokenizer_config.json
+        tokenizer.register_for_auto_class("AutoTokenizer")
+        
         # Save model and tokenizer
         model.save_pretrained(tmp_path)
         tokenizer.save_pretrained(tmp_path)
+        
+        # Copy tokenizer.py to allow loading with trust_remote_code=True
+        # This ensures the custom ChessTokenizer can be loaded from the Hub
+        tokenizer_src = Path(__file__).parent / "src" / "tokenizer.py"
+        if tokenizer_src.exists():
+            import shutil
+            shutil.copy(tokenizer_src, tmp_path / "tokenizer.py")
+            print("   Included tokenizer.py for remote loading")
 
         # Create model card with submitter info
         model_card = f"""---

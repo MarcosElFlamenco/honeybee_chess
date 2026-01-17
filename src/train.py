@@ -36,10 +36,6 @@ def parse_args():
     
     # Model arguments
     parser.add_argument(
-        "--vocab_size", type=int, default=1200,
-        help="Vocabulary size"
-    )
-    parser.add_argument(
         "--n_embd", type=int, default=128,
         help="Embedding dimension"
     )
