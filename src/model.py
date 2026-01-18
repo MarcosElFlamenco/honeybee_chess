@@ -15,7 +15,6 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-from networkx import config
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
