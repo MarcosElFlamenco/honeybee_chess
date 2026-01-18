@@ -149,12 +149,16 @@ def main():
     print("=" * 60)
     
     # Build tokenizer from dataset
-    print("\nBuilding tokenizer from dataset...")
-    tokenizer = ChessTokenizer.build_vocab_from_dataset(
-        dataset_name=args.dataset_name,
-        min_frequency=500,  # Only keep moves that appear at least 500 times
-        max_samples=100000,  # Use 100k games to build vocabulary
-    )
+
+    print("\nBuilding compositional tokenizer...")
+    tokenizer = ChessTokenizer()
+    print(f"   Vocabulary size: {tokenizer.vocab_size}")
+
+    #tokenizer = ChessTokenizer.build_vocab_from_dataset(
+        #dataset_name=args.dataset_name,
+        #min_frequency=500,  # Only keep moves that appear at least 500 times
+        #max_samples=100000,  # Use 100k games to build vocabulary
+    #)
     print(f"   Vocabulary size: {tokenizer.vocab_size}")
     
     # Use the vocab size from tokenizer (override args if provided)

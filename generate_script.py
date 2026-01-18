@@ -29,15 +29,12 @@ CONFIG_DIR = ROOT / "training_configs"
 
 def extract_train_defaults(train_path: Path):
     src = train_path.read_text()
-    print(f'source is {src}')
     pattern = r"parser\.add_argument\(([^\)]*)\)"
     defaults = {}
     types = {}
     actions = {}
     for m in re.finditer(pattern, src, re.DOTALL):
-        print(f"found arg {m}")
         call = m.group(1)
-        print(f"call is {call}") 
         name_m = re.search(r"[\"']--([A-Za-z0-9_\-]+)[\"']", call)
         if not name_m:
             continue
@@ -65,14 +62,11 @@ def extract_train_defaults(train_path: Path):
         # action
         action_m = re.search(r"action\s*=\s*[\"']([^\"']+)[\"']", call)
         if action_m:
-            print(f"found action for {name}: {action_m.group(1)}")
             actions[name] = action_m.group(1)
 
         # if no default but action=store_true, default is False
         if name not in defaults and actions.get(name) == "store_true":
             defaults[name] = False
-    print(f"Extracted {len(defaults)} argument defaults from {train_path}")
-    print(f"Arguments: {list(defaults.keys())}")
     return defaults, types, actions
 
 

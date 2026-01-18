@@ -49,6 +49,7 @@ class ChessConfig(PretrainedConfig):
         tie_weights: Whether to tie embedding and output weights.
         rms_Norm: Whether to use RMSNorm instead of LayerNorm.
     
+    """
     model_type = "chess_transformer"
     
     def __init__(
@@ -268,7 +269,7 @@ class TransformerBlock(nn.Module):
     def __init__(self, config: ChessConfig,group_size: int = None):
         super().__init__()
 #nn.modules.normalization.RMSNorm
-        if config.rmsNorm == True:
+        if config.rms_Norm == True:
             print(f"using RMSNorm")
             self.ln_1 = nn.RMSNorm(config.n_embd, eps=config.layer_norm_epsilon)
         else:
@@ -279,7 +280,7 @@ class TransformerBlock(nn.Module):
             self.attn = GroupedQueryAttention(config)
         else:
             self.attn = MultiHeadAttention(config)
-        if config.rmsNorm == True:
+        if config.rms_Norm == True:
             self.ln_2 = nn.RMSNorm(config.n_embd, eps=config.layer_norm_epsilon)
         else:
             self.ln_2 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)
@@ -473,6 +474,9 @@ class ChessForCausalLM(PreTrainedModel):
         """
         Generate the next move given a sequence of moves.
         
+        Applies structural constraints enforcing:
+        ColoredPiece [SOURCE] source [DEST] dest [modifiers]*
+        
         Args:
             input_ids: Token IDs of shape (1, seq_len).
             temperature: Sampling temperature (1.0 = no change).
@@ -486,11 +490,16 @@ class ChessForCausalLM(PreTrainedModel):
         
         # Get logits for the last position
         outputs = self(input_ids)
-        logits = outputs.logits[:, -1, :] / temperature
+        logits = outputs.logits[:, -1, :].clone() / temperature
+        
+        # Apply structural constraints (hardcoded to ChessTokenizer structure)
+        from src.tokenizer import ChessLogitsProcessor
+        processor = ChessLogitsProcessor()
+        logits = processor.constrain_logits(input_ids, logits)
         
         # Apply top-k filtering
         if top_k is not None:
-            indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
+            indices_to_remove = logits < torch.topk(logits, min(top_k, logits.size(-1)))[0][..., -1, None]
             logits[indices_to_remove] = float("-inf")
         
         # Apply top-p (nucleus) filtering
@@ -510,9 +519,10 @@ class ChessForCausalLM(PreTrainedModel):
         
         # Sample from the distribution
         probs = F.softmax(logits, dim=-1)
-        next_token = torch.multinomial(probs, num_samples=1)
-        
+        next_token = torch.multinomial(probs, num_samples=1) 
         return next_token.item()
+
+
 
 
 # Register the model with Auto classes for easy loading

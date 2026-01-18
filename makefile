@@ -9,7 +9,7 @@ train:
     	--n_layer 20 \
 
 
-CURRENT_TRAIN = rmsnorm 
+CURRENT_TRAIN = all_large
 
 valid_moves:
 	python -m src.evaluate \
