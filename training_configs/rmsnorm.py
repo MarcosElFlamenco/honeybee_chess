@@ -9,7 +9,7 @@ n_ctx = 256
 n_inner = None
 dropout = 0.1
 no_tie_weights = False
-rmsNorm = True
+rms_Norm = True
 
 dataset_name = "dlouapre/lichess_2025-01_1M"
 max_train_samples = None

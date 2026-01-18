@@ -63,9 +63,8 @@ def parse_args():
         "--no_tie_weights", action="store_true",
         help="Disable weight tying between embedding and output layers"
     )
-
     parser.add_argument(
-        "--rmsNorm", action="store_true",
+        "--rms_Norm", action="store_true",
         help="Use RMSNorm instead of LayerNorm"
     )
 
@@ -121,7 +120,6 @@ def parse_args():
         "--seed", type=int, default=42,
         help="Random seed"
     )
-    
     # Logging arguments
     parser.add_argument(
         "--logging_steps", type=int, default=100,
@@ -173,7 +171,7 @@ def main():
         n_inner=args.n_inner,
         dropout=args.dropout,
         group_size=args.group_size,
-        rmsNorm=args.rmsNorm,
+        rms_Norm=args.rms_Norm,
         tie_weights=not args.no_tie_weights,
         pad_token_id=tokenizer.pad_token_id,
         bos_token_id=tokenizer.bos_token_id,

@@ -47,7 +47,7 @@ class ChessConfig(PretrainedConfig):
         dropout: Dropout probability.
         layer_norm_epsilon: Epsilon for layer normalization.
         tie_weights: Whether to tie embedding and output weights.
-    """
+        rms_Norm: Whether to use RMSNorm instead of LayerNorm.
     
     model_type = "chess_transformer"
     
@@ -63,7 +63,7 @@ class ChessConfig(PretrainedConfig):
         dropout: float = 0.1,
         layer_norm_epsilon: float = 1e-5,
         tie_weights: bool = True,
-        rmsNorm: bool = False,
+        rms_Norm: bool = False,
         pad_token_id: int = 0,
         bos_token_id: int = 1,
         eos_token_id: int = 2,
@@ -86,7 +86,7 @@ class ChessConfig(PretrainedConfig):
         self.dropout = dropout
         self.layer_norm_epsilon = layer_norm_epsilon
         self.tie_weights = tie_weights
-        self.rmsNorm = rmsNorm
+        self.rms_Norm = rms_Norm
         # Inform HF base class about tying behavior
         self.tie_word_embeddings = bool(tie_weights)
 

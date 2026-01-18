@@ -17,15 +17,16 @@ source .venv/bin/activate
 
 # Run the training script
 python -m src.train \
-    --n_embd 136 \
+    --n_embd 132 \
     --n_layer 4 \
     --n_head 4 \
     --n_ctx 256 \
     --dropout 0.1 \
+    --rms_Norm \
     --dataset_name dlouapre/lichess_2025-01_1M \
     --val_samples 5000 \
     --output_dir ./outputs/rmsnorm \
-    --num_train_epochs 3 \
+    --num_train_epochs 10 \
     --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 64 \
     --learning_rate 0.0005 \
