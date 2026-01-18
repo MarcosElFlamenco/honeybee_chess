@@ -434,8 +434,7 @@ class ChessForCausalLM(PreTrainedModel):
         
         # Sample from the distribution
         probs = F.softmax(logits, dim=-1)
-        next_token = torch.multinomial(probs, num_samples=1)
-        
+        next_token = torch.multinomial(probs, num_samples=1) 
         return next_token.item()
 
 

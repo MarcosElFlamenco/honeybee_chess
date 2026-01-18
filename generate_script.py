@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 TRAIN_PY = ROOT / "src" / "train.py"
-TEMPLATE = ROOT / "scripts" / "vanilla.sh"
+TEMPLATE = ROOT / "scripts" / "template.sh"
 CONFIG_DIR = ROOT / "training_configs"
 
 

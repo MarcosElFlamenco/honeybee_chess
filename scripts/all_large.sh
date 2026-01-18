@@ -26,7 +26,7 @@ python -m src.train \
     --dataset_name dlouapre/lichess_2025-01_1M \
     --val_samples 5000 \
     --output_dir ./outputs/all_large \
-    --num_train_epochs 3 \
+    --num_train_epochs 20 \
     --group_size 4 \
     --per_device_train_batch_size 128 \
     --per_device_eval_batch_size 128 \
