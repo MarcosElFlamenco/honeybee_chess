@@ -9,7 +9,7 @@ train:
     	--n_layer 20 \
 
 
-CURRENT_TRAIN = m15
+CURRENT_TRAIN = m3
 
 valid_moves:
 	python -m src.evaluate \
