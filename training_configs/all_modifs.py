@@ -1,0 +1,24 @@
+# Auto-generated config matching src/train.py defaults
+dataset_name = 'dlouapre/lichess_2025-01_1M'
+dropout = 0.1
+eval_steps = 500
+group_size = None
+learning_rate = 0.0005
+logging_steps = 100
+max_train_samples = None
+n_ctx = 256
+n_embd = 128
+n_head = 4
+n_inner = None
+n_layer = 4
+no_tie_weights = False
+num_train_epochs = 3
+output_dir = './output'
+per_device_eval_batch_size = 64
+per_device_train_batch_size = 32
+rms_Norm = False
+save_steps = 1000
+seed = 42
+val_samples = 5000
+warmup_ratio = 0.1
+weight_decay = 0.01
