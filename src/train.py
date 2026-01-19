@@ -24,8 +24,10 @@ from transformers import (
 
 from src.data import ChessDataCollator, create_train_val_datasets
 from src.model import ChessConfig, ChessForCausalLM
+from src.trm_model import ChessTRMConfig, ChessTRMForCausalLM
 from src.tokenizer import ChessTokenizer
-from src.utils import count_parameters, print_parameter_budget
+from src.tokenizer_decomposed import ChessDecomposedTokenizer
+from src.utils import count_parameters, print_parameter_budget, print_trm_parameter_budget
 
 
 def parse_args():
@@ -35,6 +37,14 @@ def parse_args():
     )
     
     # Model arguments
+    parser.add_argument(
+        "--arch", type=str, default="gpt", choices=["gpt", "trm"],
+        help="Model architecture: gpt (baseline) or trm (weight-shared recurrent transformer)"
+    )
+    parser.add_argument(
+        "--vocab_size", type=int, default=1200,
+        help="Vocabulary size (will be overridden by the built tokenizer)"
+    )
     parser.add_argument(
         "--n_embd", type=int, default=128,
         help="Embedding dimension"
@@ -60,18 +70,30 @@ def parse_args():
         help="Dropout probability"
     )
     parser.add_argument(
+        "--n_cycles", type=int, default=8,
+        help="TRM only: number of recurrent refinement cycles"
+    )
+    parser.add_argument(
         "--no_tie_weights", action="store_true",
         help="Disable weight tying between embedding and output layers"
     )
-    parser.add_argument(
-        "--rms_Norm", action="store_true",
-        help="Use RMSNorm instead of LayerNorm"
-    )
-
+    
     # Data arguments
     parser.add_argument(
         "--dataset_name", type=str, default="dlouapre/lichess_2025-01_1M",
         help="Name of the dataset on Hugging Face Hub"
+    )
+    parser.add_argument(
+        "--tokenizer_type", type=str, default="move", choices=["move", "decomposed"],
+        help="Tokenizer type: move (one move token) or decomposed (piece/from/to tokens)"
+    )
+    parser.add_argument(
+        "--tokenizer_min_frequency", type=int, default=500,
+        help="Minimum move frequency to include in tokenizer vocab"
+    )
+    parser.add_argument(
+        "--tokenizer_max_samples", type=int, default=100000,
+        help="Maximum games to scan when building tokenizer vocab"
     )
     parser.add_argument(
         "--max_train_samples", type=int, default=None,
@@ -91,11 +113,6 @@ def parse_args():
         "--num_train_epochs", type=int, default=3,
         help="Number of training epochs"
     )
-    parser.add_argument(
-        "--group_size", type=int, default=None,
-        help="Group size for grouped query attention"
-    )
-
     parser.add_argument(
         "--per_device_train_batch_size", type=int, default=32,
         help="Training batch size per device"
@@ -120,6 +137,7 @@ def parse_args():
         "--seed", type=int, default=42,
         help="Random seed"
     )
+    
     # Logging arguments
     parser.add_argument(
         "--logging_steps", type=int, default=100,
@@ -149,16 +167,15 @@ def main():
     print("=" * 60)
     
     # Build tokenizer from dataset
-
-    print("\nBuilding compositional tokenizer...")
-    tokenizer = ChessTokenizer()
-    print(f"   Vocabulary size: {tokenizer.vocab_size}")
-
-    #tokenizer = ChessTokenizer.build_vocab_from_dataset(
-        #dataset_name=args.dataset_name,
-        #min_frequency=500,  # Only keep moves that appear at least 500 times
-        #max_samples=100000,  # Use 100k games to build vocabulary
-    #)
+    print("\nBuilding tokenizer from dataset...")
+    if args.tokenizer_type == "decomposed":
+        tokenizer = ChessDecomposedTokenizer()
+    else:
+        tokenizer = ChessTokenizer.build_vocab_from_dataset(
+            dataset_name=args.dataset_name,
+            min_frequency=args.tokenizer_min_frequency,
+            max_samples=args.tokenizer_max_samples,
+        )
     print(f"   Vocabulary size: {tokenizer.vocab_size}")
     
     # Use the vocab size from tokenizer (override args if provided)
@@ -166,28 +183,48 @@ def main():
     
     # Create model configuration
     print("\nCreating model configuration...")
-    config = ChessConfig(
-        vocab_size=actual_vocab_size,
-        n_embd=args.n_embd,
-        n_layer=args.n_layer,
-        n_head=args.n_head,
-        n_ctx=args.n_ctx,
-        n_inner=args.n_inner,
-        dropout=args.dropout,
-        group_size=args.group_size,
-        rms_Norm=args.rms_Norm,
-        tie_weights=not args.no_tie_weights,
-        pad_token_id=tokenizer.pad_token_id,
-        bos_token_id=tokenizer.bos_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-    )
+    if args.arch == "trm":
+        config = ChessTRMConfig(
+            vocab_size=actual_vocab_size,
+            n_embd=args.n_embd,
+            n_layer=args.n_layer,
+            n_head=args.n_head,
+            n_ctx=args.n_ctx,
+            n_inner=args.n_inner,
+            n_cycles=args.n_cycles,
+            dropout=args.dropout,
+            tie_weights=not args.no_tie_weights,
+            pad_token_id=tokenizer.pad_token_id,
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+    else:
+        config = ChessConfig(
+            vocab_size=actual_vocab_size,
+            n_embd=args.n_embd,
+            n_layer=args.n_layer,
+            n_head=args.n_head,
+            n_ctx=args.n_ctx,
+            n_inner=args.n_inner,
+            dropout=args.dropout,
+            tie_weights=not args.no_tie_weights,
+            pad_token_id=tokenizer.pad_token_id,
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
     
     # Print parameter budget
-    print_parameter_budget(config)
+    if args.arch == "trm":
+        print_trm_parameter_budget(config)
+    else:
+        print_parameter_budget(config)
     
     # Create model
     print("\nCreating model...")
-    model = ChessForCausalLM(config)
+    if args.arch == "trm":
+        model = ChessTRMForCausalLM(config)
+    else:
+        model = ChessForCausalLM(config)
     n_params = count_parameters(model)
     print(f"   Total parameters: {n_params:,}")
     

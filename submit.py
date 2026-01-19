@@ -57,11 +57,16 @@ def main():
     # Import custom classes to register them
     from src.model import ChessConfig, ChessForCausalLM
     from src.tokenizer import ChessTokenizer
+    from src.trm_model import ChessTRMConfig, ChessTRMForCausalLM
+    from src.tokenizer_decomposed import ChessDecomposedTokenizer
 
     # Load model and tokenizer
     print(f"\nLoading model from: {args.model_path}")
     model = AutoModelForCausalLM.from_pretrained(args.model_path)
-    tokenizer = ChessTokenizer.from_pretrained(args.model_path)
+    try:
+        tokenizer = ChessDecomposedTokenizer.from_pretrained(args.model_path)
+    except Exception:
+        tokenizer = ChessTokenizer.from_pretrained(args.model_path)
 
     # Count parameters
     n_params = sum(p.numel() for p in model.parameters())
@@ -74,28 +79,19 @@ def main():
     repo_id = f"{organization}/{args.model_name}"
     print(f"\nSubmitting to: {repo_id}")
 
-    # Create a temporary directory to prepare submission
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_path = Path(tmp_dir)
+    # Build model card (README.md) in requested format
+    model_type = getattr(model.config, "model_type", "unknown")
+    if model_type == "chess_transformer":
+        architecture = "Chess Transformer (GPT-style)"
+    elif model_type == "chess_trm":
+        architecture = "Chess TRM (weight-shared recurrent transformer)"
+    else:
+        architecture = model_type
 
-        # Register tokenizer for AutoTokenizer so it can be loaded with trust_remote_code=True
-        # This adds the 'auto_map' field to tokenizer_config.json
-        tokenizer.register_for_auto_class("AutoTokenizer")
-        
-        # Save model and tokenizer
-        model.save_pretrained(tmp_path)
-        tokenizer.save_pretrained(tmp_path)
-        
-        # Copy tokenizer.py to allow loading with trust_remote_code=True
-        # This ensures the custom ChessTokenizer can be loaded from the Hub
-        tokenizer_src = Path(__file__).parent / "src" / "tokenizer.py"
-        if tokenizer_src.exists():
-            import shutil
-            shutil.copy(tokenizer_src, tmp_path / "tokenizer.py")
-            print("   Included tokenizer.py for remote loading")
+    n_cycles = getattr(model.config, "n_cycles", None)
+    cycles_line = f"- **Cycles**: {n_cycles}\n" if n_cycles is not None else ""
 
-        # Create model card with submitter info
-        model_card = f"""---
+    model_card = f"""---
 library_name: transformers
 tags:
 - chess
@@ -104,24 +100,62 @@ tags:
 license: mit
 ---
 
-# {args.model_name}
+## Chess model submitted to the LLM Course Chess Challenge.
 
-Chess model submitted to the LLM Course Chess Challenge.
-
-## Submission Info
-
+### Submission Info
 - **Submitted by**: [{username}](https://huggingface.co/{username})
 - **Parameters**: {n_params:,}
 - **Organization**: {organization}
 
-## Model Details
-
-- **Architecture**: Chess Transformer (GPT-style)
+### Model Details
+- **Architecture**: {architecture}
 - **Vocab size**: {tokenizer.vocab_size}
 - **Embedding dim**: {model.config.n_embd}
 - **Layers**: {model.config.n_layer}
 - **Heads**: {model.config.n_head}
-"""
+{cycles_line}"""
+
+    # Also write to the local model folder (useful if you later upload manually)
+    try:
+        (Path(args.model_path) / "README.md").write_text(model_card)
+    except Exception:
+        pass
+
+    # Create a temporary directory to prepare submission
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+
+        # Register tokenizer for AutoTokenizer so it can be loaded with trust_remote_code=True
+        # This adds the 'auto_map' field to tokenizer_config.json
+        tokenizer.register_for_auto_class("AutoTokenizer")
+        
+        # Register model for AutoModelForCausalLM so custom architectures load correctly
+        # This adds the 'auto_map' field to config.json
+        model.config.auto_map = {
+            "AutoConfig": "model.ChessConfig",
+            "AutoModelForCausalLM": "model.ChessForCausalLM",
+        }
+        
+        # Save model and tokenizer
+        model.save_pretrained(tmp_path)
+        tokenizer.save_pretrained(tmp_path)
+        
+        # Copy tokenizer.py to allow loading with trust_remote_code=True
+        # This ensures the custom ChessTokenizer can be loaded from the Hub
+        import shutil
+        tokenizer_src = Path(__file__).parent / "src" / "tokenizer.py"
+        if tokenizer_src.exists():
+            shutil.copy(tokenizer_src, tmp_path / "tokenizer.py")
+            print("   Included tokenizer.py for remote loading")
+        
+        # Copy model.py to allow loading custom model architectures with trust_remote_code=True
+        # This ensures students who modify the model architecture can load their models from the Hub
+        model_src = Path(__file__).parent / "src" / "model.py"
+        if model_src.exists():
+            shutil.copy(model_src, tmp_path / "model.py")
+            print("   Included model.py for remote loading")
+
+        # Create model card with submitter info
         (tmp_path / "README.md").write_text(model_card)
 
         # Push to Hub

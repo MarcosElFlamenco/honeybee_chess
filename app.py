@@ -116,12 +116,58 @@ def save_leaderboard(data: list):
 def get_available_models() -> list:
     """Fetch available models from the organization."""
     try:
-        from huggingface_hub import list_models
+        from huggingface_hub import HfApi
         
-        models = list_models(author=ORGANIZATION)
-        return [m.id for m in models if "chess" in m.id.lower()]
+        api = HfApi()
+        chess_models = []
+        
+        # Method 1: Get models with high limit (sort parameter not always supported)
+        try:
+            models = list(api.list_models(author=ORGANIZATION, limit=2000))
+            chess_models = [m.id for m in models if "chess" in m.id.lower()]
+        except Exception as e:
+            print(f"Error fetching models: {e}")
+            # Fallback: try with smaller limit
+            try:
+                models = list(api.list_models(author=ORGANIZATION, limit=1000))
+                chess_models = [m.id for m in models if "chess" in m.id.lower()]
+            except:
+                pass
+        
+        # Method 2: Also search for specific patterns to catch very recent models
+        search_patterns = ["chess-ooooooooo", "chess-000000000"]
+        for pattern in search_patterns:
+            try:
+                search_results = list(api.list_models(
+                    author=ORGANIZATION,
+                    search=pattern,
+                    limit=100
+                ))
+                for m in search_results:
+                    if "chess" in m.id.lower() and m.id not in chess_models:
+                        chess_models.append(m.id)
+            except:
+                pass
+        
+        # Remove duplicates
+        chess_models = list(set(chess_models))
+        
+        # Sort: prioritize models with "ooooooooo" or "000000000" at the beginning
+        def sort_key(model_id):
+            name = model_id.split("/")[-1].lower()
+            # Priority 1: models with ooooooooo or 000000000 (put these first)
+            if "ooooooooo" in name or "000000000" in name:
+                return (0, name)
+            else:
+                return (1, name)  # Then others
+        
+        chess_models.sort(key=sort_key)
+        
+        return chess_models if chess_models else ["No models available"]
     except Exception as e:
         print(f"Error fetching models: {e}")
+        import traceback
+        traceback.print_exc()
         return ["No models available"]
 
 
@@ -704,6 +750,8 @@ with gr.Blocks(
                 legal_model = gr.Dropdown(
                     choices=get_available_models(),
                     label="Model to Evaluate",
+                    allow_custom_value=True,  # Allow manual input
+                    info="You can type the model name manually if it doesn't appear in the list (e.g., LLM-course/chess-ooooooooo-1)",
                 )
                 refresh_legal_models_btn = gr.Button("🔄", scale=0, min_width=40)
             
