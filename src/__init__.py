@@ -1,7 +1,9 @@
 """Chess Challenge source module."""
 
 from .model import ChessConfig, ChessForCausalLM
+from .trm_model import ChessTRMConfig, ChessTRMForCausalLM
 from .tokenizer import ChessTokenizer
+from .tokenizer_decomposed import ChessDecomposedTokenizer
 
 # Lazy import for evaluate to avoid RuntimeWarning when running as module
 def __getattr__(name):
@@ -16,7 +18,10 @@ def __getattr__(name):
 __all__ = [
     "ChessConfig",
     "ChessForCausalLM", 
+    "ChessTRMConfig",
+    "ChessTRMForCausalLM",
     "ChessTokenizer",
+    "ChessDecomposedTokenizer",
     "ChessEvaluator",
     "load_model_from_hub",
 ]

@@ -48,6 +48,7 @@ class ChessEvaluator:
         stockfish_path: Optional[str] = None,
         stockfish_level: int = 1,
         max_retries: int = 3,
+        force_legal: bool = False,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         """
@@ -64,6 +65,7 @@ class ChessEvaluator:
         self.model = model.to(device)
         self.tokenizer = tokenizer
         self.max_retries = max_retries
+        self.force_legal = force_legal
         self.device = device
         
         # Initialize Stockfish
@@ -417,6 +419,102 @@ class ChessEvaluator:
         
         return ""
 
+    def _format_move_from_board_move(self, board, move) -> Tuple[str, str]:
+        color = "W" if board.turn == self.chess.WHITE else "B"
+        piece = board.piece_at(move.from_square)
+        piece_letter = piece.symbol().upper() if piece else "P"
+        from_sq = self.chess.square_name(move.from_square)
+        to_sq = self.chess.square_name(move.to_square)
+        promo = self.chess.piece_symbol(move.promotion).upper() if move.promotion else None
+
+        move_str = self._format_move(color, piece_letter, from_sq, to_sq, promo)
+
+        fmt = self._detect_tokenizer_format()
+        if fmt == "standard":
+            if board.is_capture(move):
+                move_str += "(x)"
+            temp_board = board.copy(stack=False)
+            temp_board.push(move)
+            if temp_board.is_checkmate():
+                if "(x)" in move_str:
+                    move_str = move_str.replace("(x)", "(x+*)")
+                else:
+                    move_str += "(+*)"
+            elif temp_board.is_check():
+                if "(x)" in move_str:
+                    move_str = move_str.replace("(x)", "(x+)")
+                else:
+                    move_str += "(+)"
+            if piece_letter == "K":
+                if abs(ord(from_sq[0]) - ord(to_sq[0])) > 1:
+                    if to_sq[0] == "g":
+                        move_str = move_str.split("(")[0] + "(o)"
+                    else:
+                        move_str = move_str.split("(")[0] + "(O)"
+        return move_str, move.uci()
+
+    @torch.no_grad()
+    def _get_model_move_force_legal(
+        self,
+        board,
+        input_ids: torch.Tensor,
+        temperature: float = 0.7,
+        top_k: int = 10,
+    ) -> Optional[str]:
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            return None
+
+        candidates = []
+        unk_token_id = getattr(self.tokenizer, "unk_token_id", None)
+        for mv in legal_moves:
+            move_text, uci = self._format_move_from_board_move(board, mv)
+            token_ids = self.tokenizer.encode(move_text, add_special_tokens=False)
+            if unk_token_id is not None and any(tid == unk_token_id for tid in token_ids):
+                continue
+            candidates.append((token_ids, uci))
+
+        if not candidates:
+            return random.choice(legal_moves).uci()
+
+        # Fast path: all candidates are single-token moves (move-level tokenizer).
+        if all(len(toks) == 1 for toks, _uci in candidates):
+            outputs = self.model(input_ids=input_ids)
+            logits = outputs.logits[:, -1, :]
+            logits = logits / float(max(temperature, 1e-8))
+
+            cand_token_ids = torch.tensor([toks[0] for toks, _uci in candidates], device=logits.device)
+            cand_logits = logits[0, cand_token_ids]
+
+            if top_k > 0 and cand_logits.numel() > top_k:
+                top_vals, top_idx = torch.topk(cand_logits, top_k)
+                probs = torch.softmax(top_vals, dim=-1)
+                chosen = top_idx[torch.multinomial(probs, num_samples=1).item()].item()
+            else:
+                probs = torch.softmax(cand_logits, dim=-1)
+                chosen = torch.multinomial(probs, num_samples=1).item()
+
+            return candidates[chosen][1]
+
+        # General path: score multi-token candidates by log-prob sum.
+        best_uci = candidates[0][1]
+        best_score = float("-inf")
+
+        for toks, uci in candidates:
+            prefix = input_ids
+            score = 0.0
+            for tid in toks:
+                outputs = self.model(input_ids=prefix)
+                logits = outputs.logits[:, -1, :]
+                log_probs = torch.log_softmax(logits / float(max(temperature, 1e-8)), dim=-1)
+                score += float(log_probs[0, tid].item())
+                prefix = torch.cat([prefix, torch.tensor([[tid]], device=prefix.device, dtype=prefix.dtype)], dim=-1)
+            if score > best_score:
+                best_score = score
+                best_uci = uci
+
+        return best_uci
+
     def _get_model_move(
         self,
         board,
@@ -457,6 +555,15 @@ class ChessEvaluator:
             truncation=True,
             max_length=self.model.config.n_ctx - 10,
         ).to(self.device)
+
+        if self.force_legal:
+            uci_move = self._get_model_move_force_legal(
+                board,
+                inputs["input_ids"],
+                temperature=temperature,
+                top_k=top_k,
+            )
+            return uci_move, 0
         
         # Try to generate a legal move
         for retry in range(self.max_retries):
@@ -493,6 +600,7 @@ class ChessEvaluator:
         model_color: str = "white",
         max_moves: int = 200,
         temperature: float = 0.7,
+        top_k: int = 10,
     ) -> GameResult:
         """
         Play a single game between the model and Stockfish.
@@ -516,7 +624,7 @@ class ChessEvaluator:
             
             if is_model_turn:
                 # Model's turn
-                uci_move, retries = self._get_model_move(board, temperature)
+                uci_move, retries = self._get_model_move(board, temperature=temperature, top_k=top_k)
                 illegal_move_count += retries
                 
                 if uci_move is None:
@@ -577,6 +685,7 @@ class ChessEvaluator:
         self,
         n_positions: int = 1000,
         temperature: float = 0.7,
+        top_k: int = 10,
         verbose: bool = True,
         seed: int = 42,
     ) -> dict:
@@ -625,7 +734,7 @@ class ChessEvaluator:
             results["total_positions"] += 1
             
             # Test model's move generation
-            uci_move, retries = self._get_model_move(board, temperature)
+            uci_move, retries = self._get_model_move(board, temperature=temperature, top_k=top_k)
             
             position_result = {
                 "fen": board.fen(),
@@ -664,6 +773,7 @@ class ChessEvaluator:
         self,
         n_games: int = 100,
         temperature: float = 0.7,
+        top_k: int = 10,
         verbose: bool = True,
     ) -> dict:
         """
@@ -693,6 +803,7 @@ class ChessEvaluator:
             game = self.play_game(
                 model_color=model_color,
                 temperature=temperature,
+                top_k=top_k,
             )
             
             results["games"].append(game)
@@ -766,19 +877,44 @@ def load_model_from_hub(model_id: str, device: str = "auto", verbose: bool = Tru
     
     # Import to register custom classes
     from src.model import ChessConfig, ChessForCausalLM
+    from src.trm_model import ChessTRMConfig, ChessTRMForCausalLM
     from src.tokenizer import ChessTokenizer
+    from src.tokenizer_decomposed import ChessDecomposedTokenizer
     
-    # Try AutoTokenizer with trust_remote_code first to load custom tokenizer.py from Hub
-    # Fall back to local ChessTokenizer if the model doesn't have a custom tokenizer
-    tokenizer_source = None
+    # Decide tokenizer based on tokenizer_config.json when possible (most reliable),
+    # otherwise fall back to AutoTokenizer / local tokenizers.
+    tokenizer_source = "unknown"
+    tokenizer_class = None
+
     try:
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-        tokenizer_source = "AutoTokenizer (from Hub with trust_remote_code=True)"
+        import json
+        from huggingface_hub import hf_hub_download
+
+        tok_cfg_path = hf_hub_download(repo_id=model_id, filename="tokenizer_config.json")
+        with open(tok_cfg_path, "r", encoding="utf-8") as f:
+            tok_cfg = json.load(f)
+        tokenizer_class = tok_cfg.get("tokenizer_class")
+        if verbose:
+            print(f"   tokenizer_config.json tokenizer_class: {tokenizer_class}")
     except Exception as e:
         if verbose:
-            print(f"   AutoTokenizer failed: {e}")
+            print(f"   Could not read tokenizer_config.json: {e}")
+
+    if tokenizer_class == "ChessDecomposedTokenizer":
+        tokenizer = ChessDecomposedTokenizer.from_pretrained(model_id)
+        tokenizer_source = "ChessDecomposedTokenizer (tokenizer_config.json)"
+    elif tokenizer_class == "ChessTokenizer":
         tokenizer = ChessTokenizer.from_pretrained(model_id)
-        tokenizer_source = "ChessTokenizer (local class, vocab from Hub)"
+        tokenizer_source = "ChessTokenizer (tokenizer_config.json)"
+    else:
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+            tokenizer_source = "AutoTokenizer (from Hub with trust_remote_code=True)"
+        except Exception as e:
+            if verbose:
+                print(f"   AutoTokenizer failed: {e}")
+            tokenizer = ChessTokenizer.from_pretrained(model_id)
+            tokenizer_source = "ChessTokenizer (fallback)"
     
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
@@ -834,6 +970,18 @@ def main():
         "--temperature", type=float, default=0.7,
         help="Sampling temperature"
     )
+    parser.add_argument(
+        "--top_k", type=int, default=10,
+        help="Top-k sampling for token generation (lower is more conservative; set 1 for greedy-like)"
+    )
+    parser.add_argument(
+        "--max_retries", type=int, default=3,
+        help="Number of retries when sampling produces an illegal move"
+    )
+    parser.add_argument(
+        "--force_legal", action="store_true",
+        help="Force legal moves by scoring/filtering legal moves with python-chess (yields ~100% legal rate)"
+    )
     
     args = parser.parse_args()
     
@@ -851,9 +999,14 @@ def main():
         # Local path
         from transformers import AutoModelForCausalLM
         from src.tokenizer import ChessTokenizer
+        from src.tokenizer_decomposed import ChessDecomposedTokenizer
         from src.model import ChessConfig, ChessForCausalLM
+        from src.trm_model import ChessTRMConfig, ChessTRMForCausalLM
         
-        tokenizer = ChessTokenizer.from_pretrained(args.model_path)
+        try:
+            tokenizer = ChessDecomposedTokenizer.from_pretrained(args.model_path)
+        except Exception:
+            tokenizer = ChessTokenizer.from_pretrained(args.model_path)
         model = AutoModelForCausalLM.from_pretrained(
             args.model_path,
             device_map="auto",
@@ -874,6 +1027,8 @@ def main():
         tokenizer=tokenizer,
         stockfish_path=args.stockfish_path,
         stockfish_level=args.stockfish_level,
+        max_retries=args.max_retries,
+        force_legal=args.force_legal,
     )
     
     # Run legal move evaluation
@@ -886,6 +1041,7 @@ def main():
         legal_results = evaluator.evaluate_legal_moves(
             n_positions=args.n_positions,
             temperature=args.temperature,
+            top_k=args.top_k,
             verbose=True,
             seed=args.seed,
         )
@@ -908,6 +1064,7 @@ def main():
         winrate_results = evaluator.evaluate(
             n_games=args.n_games,
             temperature=args.temperature,
+            top_k=args.top_k,
             verbose=True,
         )
         

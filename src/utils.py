@@ -15,6 +15,7 @@ import torch.nn as nn
 
 if TYPE_CHECKING:
     from src.model import ChessConfig
+    from src.trm_model import ChessTRMConfig
 
 
 def count_parameters(model: nn.Module, trainable_only: bool = True) -> int:
@@ -107,6 +108,91 @@ def estimate_parameters(config: "ChessConfig") -> Dict[str, int]:
     )
     
     return estimates
+
+
+def estimate_trm_parameters(config: "ChessTRMConfig") -> Dict[str, int]:
+    V = config.vocab_size
+    d = config.n_embd
+    L = config.n_layer
+    n_ctx = config.n_ctx
+    n_inner = config.n_inner
+
+    estimates = {
+        "token_embeddings": V * d,
+        "position_embeddings": n_ctx * d,
+        "attention_qkv_per_layer": (3 * d * d) + (3 * d),
+        "attention_proj_per_layer": (d * d) + d,
+        "ffn_per_layer": (2 * d * n_inner) + (n_inner + d),
+        "layernorm_per_layer": 4 * d,
+        "final_layernorm": 2 * d,
+    }
+
+    per_layer = (
+        estimates["attention_qkv_per_layer"]
+        + estimates["attention_proj_per_layer"]
+        + estimates["ffn_per_layer"]
+        + estimates["layernorm_per_layer"]
+    )
+    estimates["total_transformer_layers"] = L * per_layer
+
+    if getattr(config, "tie_weights", True):
+        estimates["lm_head"] = 0
+        estimates["lm_head_note"] = "Tied with token embeddings"
+    else:
+        estimates["lm_head"] = V * d
+
+    estimates["total"] = (
+        estimates["token_embeddings"]
+        + estimates["position_embeddings"]
+        + estimates["total_transformer_layers"]
+        + estimates["final_layernorm"]
+        + estimates["lm_head"]
+    )
+
+    return estimates
+
+
+def print_trm_parameter_budget(config: "ChessTRMConfig", limit: int = 1_000_000) -> None:
+    estimates = estimate_trm_parameters(config)
+
+    print("=" * 60)
+    print("TRM PARAMETER BUDGET ANALYSIS")
+    print("=" * 60)
+    print(f"\nConfiguration:")
+    print(f"  vocab_size (V) = {config.vocab_size}")
+    print(f"  n_embd (d)     = {config.n_embd}")
+    print(f"  n_layer (L)    = {config.n_layer}")
+    print(f"  n_head         = {config.n_head}")
+    print(f"  n_ctx          = {config.n_ctx}")
+    print(f"  n_inner        = {config.n_inner}")
+    print(f"  n_cycles       = {config.n_cycles}")
+    print(f"  tie_weights    = {config.tie_weights}")
+
+    print(f"\nParameter Breakdown:")
+    print(f"  Token Embeddings:    {estimates['token_embeddings']:>10,}")
+    print(f"  Position Embeddings: {estimates['position_embeddings']:>10,}")
+    print(f"  TRM Layers:          {estimates['total_transformer_layers']:>10,}")
+    print(f"  Final LayerNorm:     {estimates['final_layernorm']:>10,}")
+
+    if config.tie_weights:
+        print(f"  LM Head:             {'(tied)':>10}")
+    else:
+        print(f"  LM Head:             {estimates['lm_head']:>10,}")
+
+    print(f"  " + "-" * 30)
+    print(f"  TOTAL:               {estimates['total']:>10,}")
+
+    print(f"\nBudget Status:")
+    print(f"  Limit:    {limit:>10,}")
+    print(f"  Used:     {estimates['total']:>10,}")
+    print(f"  Remaining:{limit - estimates['total']:>10,}")
+
+    if estimates["total"] <= limit:
+        print(f"\n Within budget! ({estimates['total'] / limit * 100:.1f}% used)")
+    else:
+        print(f"\n OVER BUDGET by {estimates['total'] - limit:,} parameters!")
+
+    print("=" * 60)
 
 
 def print_parameter_budget(config: "ChessConfig", limit: int = 1_000_000) -> None:
