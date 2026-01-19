@@ -114,12 +114,32 @@ def save_leaderboard(data: list):
 
 
 def get_available_models() -> list:
-    """Fetch available models from the organization."""
+    """Fetch available models from the organization, newest first, one per user."""
     try:
         from huggingface_hub import list_models
         
-        models = list_models(author=ORGANIZATION)
-        return [m.id for m in models if "chess" in m.id.lower()]
+        # Get all chess models sorted by newest first
+        models = list(list_models(author=ORGANIZATION, sort="lastModified", direction=-1))
+        chess_models = [m for m in models if "chess" in m.id.lower()]
+        
+        # Keep only the latest model per user (based on model name pattern: chess-<username>-*)
+        seen_users = set()
+        filtered_models = []
+        for m in chess_models:
+            # Extract username from model id (format: LLM-course/chess-<username>-<modelname>)
+            model_name = m.id.split("/")[-1]  # e.g., "chess-johndoe-mymodel"
+            parts = model_name.split("-")
+            if len(parts) >= 2:
+                # Username is after "chess-"
+                username = parts[1] if parts[0] == "chess" else None
+                if username and username not in seen_users:
+                    seen_users.add(username)
+                    filtered_models.append(m.id)
+            else:
+                # If pattern doesn't match, include the model anyway
+                filtered_models.append(m.id)
+        
+        return filtered_models if filtered_models else ["No models available"]
     except Exception as e:
         print(f"Error fetching models: {e}")
         return ["No models available"]
@@ -130,8 +150,16 @@ def format_leaderboard_html(data: list) -> str:
     if not data:
         return "<p>No models evaluated yet. Be the first to submit!</p>"
     
+    # Keep only the best entry per user
+    best_per_user = {}
+    for entry in data:
+        user_id = entry.get("user_id", "unknown")
+        legal_rate = entry.get("legal_rate", 0)
+        if user_id not in best_per_user or legal_rate > best_per_user[user_id].get("legal_rate", 0):
+            best_per_user[user_id] = entry
+    
     # Sort by legal_rate
-    sorted_data = sorted(data, key=lambda x: x.get("legal_rate", 0), reverse=True)
+    sorted_data = sorted(best_per_user.values(), key=lambda x: x.get("legal_rate", 0), reverse=True)
     
     html = """
     <style>
@@ -381,15 +409,17 @@ Please ensure your model was submitted using the official submission script (`su
 which adds the required metadata to the README.md file.
 """
         
-        # Update leaderboard - only if improved
+        # Update leaderboard - only one entry per user, keep the best
         leaderboard = load_leaderboard()
-        entry = next((e for e in leaderboard if e["model_id"] == model_id), None)
+        
+        # Find existing entry for this user (not model - one entry per user)
+        user_entry = next((e for e in leaderboard if e.get("user_id") == user_id), None)
         
         new_legal_rate = results.get("legal_rate_with_retry", 0)
         new_legal_rate_first_try = results.get("legal_rate_first_try", 0)
         
-        if entry is None:
-            # New model - add to leaderboard
+        if user_entry is None:
+            # New user - add to leaderboard
             entry = {
                 "model_id": model_id,
                 "user_id": user_id,
@@ -401,19 +431,23 @@ which adds the required metadata to the README.md file.
             save_leaderboard(leaderboard)
             update_message = "New entry added to leaderboard!"
         else:
-            # Existing model - only update if improved
-            old_legal_rate = entry.get("legal_rate", 0)
+            # Existing user - only update if this submission is better
+            old_legal_rate = user_entry.get("legal_rate", 0)
+            old_model = user_entry.get("model_id", "unknown")
             if new_legal_rate > old_legal_rate:
-                entry.update({
-                    "user_id": user_id,
+                user_entry.update({
+                    "model_id": model_id,  # Update to new model if better
                     "legal_rate": new_legal_rate,
                     "legal_rate_first_try": new_legal_rate_first_try,
                     "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 })
                 save_leaderboard(leaderboard)
-                update_message = f"Improved! Previous: {old_legal_rate*100:.1f}% → New: {new_legal_rate*100:.1f}%"
+                if old_model != model_id:
+                    update_message = f"🎉 Improved! New best model for {user_id}: {old_legal_rate*100:.1f}% → {new_legal_rate*100:.1f}%"
+                else:
+                    update_message = f"🎉 Improved! Previous: {old_legal_rate*100:.1f}% → New: {new_legal_rate*100:.1f}%"
             else:
-                update_message = f"ℹNo improvement. Current best: {old_legal_rate*100:.1f}%, This run: {new_legal_rate*100:.1f}%"
+                update_message = f"ℹ️ No improvement. Your best: {old_legal_rate*100:.1f}% (model: {old_model.split('/')[-1]}), This run: {new_legal_rate*100:.1f}%"
         
         progress(1.0, desc="Done!")
         
