@@ -9,7 +9,7 @@ train:
     	--n_layer 20 \
 
 
-CURRENT_TRAIN = all_large
+CURRENT_TRAIN = all_long
 
 valid_moves:
 	python -m src.evaluate \
@@ -30,4 +30,4 @@ local_test: generate_script
 	bash scripts/$(CURRENT_TRAIN).sh
 
 submit:
-	python submit.py --model_path ./outputs/vanilla/final_model --model_name oscar_best_chess_model 
+	python submit.py --model_path ./outputs/$(CURRENT_TRAIN)/final_model --model_name chess_$(CURRENT_TRAIN)_oscar 
