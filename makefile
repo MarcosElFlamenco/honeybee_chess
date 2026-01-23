@@ -30,4 +30,4 @@ local_test: generate_script
 	bash scripts/$(CURRENT_TRAIN).sh
 
 submit:
-	python submit.py --model_path ./outputs/$(CURRENT_TRAIN)/final_model --model_name chess_$(CURRENT_TRAIN)_oscar 
+	python submit.py --model_path ./outputs/$(CURRENT_TRAIN)/final_model --model_name chess_oscar_$(CURRENT_TRAIN)
